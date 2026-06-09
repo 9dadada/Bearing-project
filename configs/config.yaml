@@ -1,0 +1,52 @@
+# =============================================================
+#  진동 베어링 이상탐지 — 전체 설정 파일
+#  모든 "숫자/선택"은 여기 한 곳에 모은다.
+#  코드 곳곳에 숫자를 흩뿌리지 않기 위함 (재현성·실험 편의)
+# =============================================================
+
+# ---- 재현성 ----
+seed: 42            # 난수 시드 고정 (실험 재현용)
+device: auto        # auto / cuda / cpu  (auto = GPU 있으면 쓰고 없으면 CPU)
+
+# ---- 데이터 경로 ----
+data:
+  raw_normal: data/raw/normal      # 정상 .mat 폴더 (학습용)
+  raw_fault:  data/raw/fault_48k   # 고장 .mat 폴더 (평가 전용 — 학습 금지!)
+  processed:  data/processed       # 전처리 결과(윈도우 배열·통계) 저장 위치
+  mat_key_de: DE_time              # .mat 안에서 쓸 신호 변수 (Drive End 가속도계)
+
+# ---- 신호 / 윈도우 ----
+# CWRU 48k 데이터 기준. 1회전 ≈ 1600 포인트(1750rpm, 48kHz).
+signal:
+  sampling_rate: 48000   # Hz
+window:
+  length: 1600           # 한 윈도우 길이(포인트 수) ≈ 회전 1바퀴
+  overlap: 0.5           # 윈도우 겹침 비율 (0.5 = 절반씩 겹침)
+
+# ---- 정규화 ----
+# 통계는 "정상 train"에서만 계산해 저장 후 재사용 (데이터 누수 차단)
+normalize:
+  method: zscore         # zscore = (x - 평균) / 표준편차
+
+# ---- 통계 임펄스 탐지기 (EPIC 1) ----
+stats:
+  features: [kurtosis, crest_factor, rms, peak]  # 뽑을 특징들
+  threshold_percentile: 99   # 정상 분포 상위 99% 를 임계값으로
+
+# ---- 디노이징 오토인코더 (EPIC 2) ----
+# 모델·학습 세부값은 EPIC 2 진행하며 채운다 (지금은 자리만)
+ae:
+  noise_std: 0.1         # 디노이징용 노이즈 강도 (튜닝 대상)
+  epochs: 30
+  batch_size: 64
+  lr: 0.001
+
+# ---- 융합 / 판정 (EPIC 3) ----
+fusion:
+  rule: or               # or / weighted
+  debounce_n: 3          # 연속 N 윈도우 이상일 때만 알람
+
+# ---- 도메인 가정 (다루는 운전 조건 범위) ----
+domain:
+  load_hp: 2             # 모터 부하 2 HP
+  rpm: 1750              # 회전수

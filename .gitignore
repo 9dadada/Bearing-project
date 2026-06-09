@@ -1,0 +1,21 @@
+# 가상환경 (각자 다시 설치 — requirements.txt 참고)
+.venv/
+
+# 파이썬 캐시
+__pycache__/
+*.pyc
+
+# 데이터 파일 (CWRU 공개 데이터 — README 의 받는 법 참고. 용량 커서 깃엔 안 올림)
+*.mat
+
+# 전처리 결과 (폴더 구조만 유지)
+data/processed/*
+!data/processed/.gitkeep
+
+# 학습된 모델 (폴더 구조만 유지)
+models/*
+!models/.gitkeep
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
