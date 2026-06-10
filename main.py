@@ -17,6 +17,7 @@ import scipy
 import torch
 
 from src.config import load_config, get_device
+from src.data.loader import load_normal_signals, load_fault_signals
 
 
 def main() -> None:
@@ -33,7 +34,24 @@ def main() -> None:
     print(f"정상 데이터   : {cfg['data']['raw_normal']}")
     print(f"고장 데이터   : {cfg['data']['raw_fault']} (평가 전용)")
     print()
-    print("T0.1 OK — 빈 파이프라인이 에러 없이 돌아간다.")
+    print("=== T0.2 데이터 로드 ===")
+    # 정상: 학습에 쓰는 유일한 데이터
+    normal = load_normal_signals(cfg)
+    print(f"정상 파일 {len(normal)}개 (학습용)")
+    for name, sig in normal.items():
+        print(f"  - {name}: {len(sig):,} 포인트")
+
+    # 고장: 평가 전용 — 학습 코드는 위 normal 만 쓰고 이건 건드리지 않는다
+    fault = load_fault_signals(cfg)
+    print(f"고장 파일 {len(fault)}개 (평가 전용 — 학습 금지)")
+    # 고장 종류별 개수 세기
+    by_label: dict[str, int] = {}
+    for info in fault.values():
+        by_label[info["label"]] = by_label.get(info["label"], 0) + 1
+    for label, count in sorted(by_label.items()):
+        print(f"  - {label}: {count}개")
+    print()
+    print("T0.2 OK — 정상/고장 개수 출력됨. 고장은 별도 함수로만 접근 가능(학습 격리).")
 
 
 if __name__ == "__main__":
