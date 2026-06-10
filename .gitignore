@@ -8,13 +8,27 @@ __pycache__/
 # 데이터 파일 (CWRU 공개 데이터 — README 의 받는 법 참고. 용량 커서 깃엔 안 올림)
 *.mat
 
-# 전처리 결과 (폴더 구조만 유지)
+# 전처리/파생 데이터 (폴더 구조만 유지)
 data/processed/*
 !data/processed/.gitkeep
+data/features/*
+!data/features/.gitkeep
+data/spectrograms/*
+!data/spectrograms/.gitkeep
+data/splits/*
+!data/splits/.gitkeep
 
-# 학습된 모델 (폴더 구조만 유지)
+# 학습된 모델·통계·임계값 (폴더 구조만 유지)
 models/*
 !models/.gitkeep
+
+# 평가 결과물 (폴더 구조만 유지)
+outputs/figures/*
+!outputs/figures/.gitkeep
+outputs/heatmaps/*
+!outputs/heatmaps/.gitkeep
+outputs/reports/*
+!outputs/reports/.gitkeep
 
 # OS / 에디터
 .DS_Store
