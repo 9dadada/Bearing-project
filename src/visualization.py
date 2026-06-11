@@ -136,6 +136,82 @@ def plot_signal_overview(save_path: str | Path) -> Path:
     return out
 
 
+def plot_feature_comparison(save_path: str | Path) -> Path:
+    """경로 A 특징(첨도·크레스트팩터·RMS·peak)의 정상 vs 고장 분포를 비교해 그린다.
+
+    특징마다 히스토그램(정상 파랑 / 고장 빨강)과 임계값선(점선)을 겹쳐 그려,
+    '정상은 임계값 아래, 고장은 위'로 갈리는 걸 눈으로 확인한다.
+    """
+    from src.baseline_statistical import extract_features_batch, load_thresholds
+    from src.data_loader import load_fault_signals, load_normal_signals
+    from src.preprocessing import make_windows_from_signals
+
+    cfg = load_config()
+    length, overlap = cfg["window"]["length"], cfg["window"]["overlap"]
+    feats = cfg["stats"]["features"]
+
+    normal = load_normal_signals(cfg)
+    fault = load_fault_signals(cfg)
+    nwins = make_windows_from_signals(normal, length, overlap)
+    fwins = make_windows_from_signals({k: v["signal"] for k, v in fault.items()}, length, overlap)
+
+    nfb = extract_features_batch(nwins, feats)
+    ffb = extract_features_batch(fwins, feats)
+    thr = load_thresholds(cfg)["path_a_statistical"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    for ax, f in zip(axes.ravel(), feats):
+        ax.hist(nfb[f], bins=60, alpha=0.6, color="#2980b9", density=True, label="정상")
+        ax.hist(ffb[f], bins=60, alpha=0.6, color="#e74c3c", density=True, label="고장")
+        ax.axvline(thr[f]["threshold"], color="black", ls="--", lw=1.3,
+                   label=f"임계값 {thr[f]['threshold']:.3f}")
+        ax.set_title(f"{f}   (정상평균 {nfb[f].mean():.3f}  vs  고장평균 {ffb[f].mean():.3f})", fontsize=10)
+        ax.set_xlabel("특징값")
+        ax.set_ylabel("밀도")
+        ax.legend(fontsize=8)
+    fig.suptitle("경로 A 특징 분포 — 정상(파랑) vs 고장(빨강) + 임계값(점선)",
+                 fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+
+    out = resolve_path(save_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=120)
+    plt.close(fig)
+    return out
+
+
+def _print_path_a_output(cfg) -> None:
+    """최종 출력 예시 — 정상/고장 윈도우 1개씩의 특징값과 이상 판정."""
+    from src.baseline_statistical import (
+        anomaly_score,
+        extract_features,
+        is_anomaly,
+        load_thresholds,
+    )
+    from src.data_loader import load_fault_signals, load_normal_signals
+    from src.preprocessing import make_windows
+
+    length, overlap = cfg["window"]["length"], cfg["window"]["overlap"]
+    feats = cfg["stats"]["features"]
+    thr = load_thresholds(cfg)["path_a_statistical"]
+
+    def show(label, sig):
+        w = make_windows(sig, length, overlap)[0]
+        fe = extract_features(w, feats)
+        anom, _ = is_anomaly(fe, thr)
+        score = anomaly_score(fe, thr)
+        feat_str = ", ".join(f"{k}={v:.3f}" for k, v in fe.items())
+        print(f"  [{label}] {feat_str}")
+        print(f"        → score={score:.2f}  판정={'이상' if anom else '정상'}")
+
+    print("\n=== 경로 A 최종 출력 예시 ===")
+    _, nsig = next(iter(load_normal_signals(cfg).items()))
+    show("정상", nsig)
+    ir = next((v for v in load_fault_signals(cfg).values() if v["location"] == "IR"), None)
+    if ir is not None:
+        show("고장 IR", ir["signal"])
+
+
 def _main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     from src.data_loader import load_fault_signals, load_normal_signals
@@ -158,6 +234,11 @@ def _main() -> None:
         cand.sort(key=lambda v: v["size"] or "")
         out = plot_windowing_demo(fname, cand[0]["signal"], f"outputs/figures/{fname}_windowing.png")
         print(f"저장됨: {out.relative_to(_ROOT)}")
+
+    # 경로 A 특징 비교 그래프 + 최종 출력 예시
+    out = plot_feature_comparison("outputs/figures/feature_comparison.png")
+    print(f"저장됨: {out.relative_to(_ROOT)}")
+    _print_path_a_output(cfg)
 
 
 if __name__ == "__main__":
