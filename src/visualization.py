@@ -180,6 +180,54 @@ def plot_feature_comparison(save_path: str | Path) -> Path:
     return out
 
 
+def plot_spectrogram_comparison(save_path: str | Path) -> Path:
+    """정상 vs 고장(IR/OR/B) 스펙트로그램을 히트맵으로 비교한다.
+
+    가로=시간, 세로=주파수(kHz), 색=세기(dB). 네 그림 색 스케일을 통일해
+    고장에서 에너지가 어떻게 다르게 퍼지는지 눈으로 본다.
+    """
+    from src.data_loader import load_fault_signals, load_normal_signals
+    from src.preprocessing import make_windows
+    from src.spectrogram import to_spectrogram
+
+    cfg = load_config()
+    length, overlap = cfg["window"]["length"], cfg["window"]["overlap"]
+    nyq_khz = cfg["signal"]["base_sampling_rate"] / 2 / 1000.0
+
+    normal = load_normal_signals(cfg)
+    fault = load_fault_signals(cfg)
+
+    # 정상 1개 + 고장 위치별 1개씩의 '첫 윈도우' 스펙트로그램
+    items = []
+    _, nsig = next(iter(normal.items()))
+    items.append(("정상 (normal)", nsig))
+    for loc, kor in (("IR", "내륜 고장"), ("OR", "외륜 고장"), ("B", "볼 고장")):
+        v = next((x for x in fault.values() if x["location"] == loc), None)
+        if v is not None:
+            items.append((f"{kor} ({v['label']})", v["signal"]))
+
+    specs = [(title, to_spectrogram(make_windows(sig, length, overlap)[0], cfg)) for title, sig in items]
+    vmin = min(s.min() for _, s in specs)
+    vmax = max(s.max() for _, s in specs)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    for ax, (title, spec) in zip(axes.ravel(), specs):
+        im = ax.imshow(spec, origin="lower", aspect="auto", cmap="magma", vmin=vmin, vmax=vmax,
+                       extent=(0, spec.shape[1], 0, nyq_khz))
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel("시간 프레임")
+        ax.set_ylabel("주파수 (kHz)")
+        fig.colorbar(im, ax=ax, label="dB")
+    fig.suptitle("스펙트로그램 — 정상 vs 고장 (색=세기 dB)", fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+
+    out = resolve_path(save_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=120)
+    plt.close(fig)
+    return out
+
+
 def _print_path_a_output(cfg) -> None:
     """최종 출력 예시 — 정상/고장 윈도우 1개씩의 특징값과 이상 판정."""
     from src.baseline_statistical import (
@@ -239,6 +287,10 @@ def _main() -> None:
     out = plot_feature_comparison("outputs/figures/feature_comparison.png")
     print(f"저장됨: {out.relative_to(_ROOT)}")
     _print_path_a_output(cfg)
+
+    # T2.1 스펙트로그램 비교 그래프
+    out = plot_spectrogram_comparison("outputs/figures/spectrogram_comparison.png")
+    print(f"저장됨: {out.relative_to(_ROOT)}")
 
 
 if __name__ == "__main__":
