@@ -1,11 +1,11 @@
 project/
 │
 ├── data/
-│   ├── raw/                          # 원본 CWRU .mat 파일
-│   │   ├── normal/                   # 정상 신호 (학습용 — 유일한 학습 데이터)
-│   │   ├── fault_48k/                # 고장 48kHz (평가 전용 — 학습 금지)
-│   │   ├── fault_12k/                # 고장 12kHz (평가 전용 — C 멀티 rate 분류용)
-│   │   └── fan_end_fault/            # Fan End 고장 (평가 전용 — FE 가속도계)
+│   ├── raw/                          # 원본 CWRU .mat 파일 (전부 12kHz로 통일해서 사용)
+│   │   ├── normal/                   # 정상 신호 (학습용 — 원본 48k → 12k 다운샘플)
+│   │   ├── fault_12k/                # 고장 12kHz (주 평가 데이터, DE)
+│   │   ├── fan_end_fault/            # Fan End 고장 12kHz (평가 전용 — FE 가속도계)
+│   │   └── fault_48k/                # 고장 48kHz (로더에서 12k로 다운샘플)
 │   ├── processed/                    # 윈도우 슬라이싱된 신호 배열
 │   ├── features/                     # 모델 입력용 스펙트로그램 .npy 배열 (수치 손실 방지)
 │   ├── spectrograms/                 # 사람이 눈으로 볼 시각화 이미지 전용 (학습엔 사용 안 함)
@@ -23,8 +23,8 @@ project/
 │   ├── streaming.py                  # 실시간 스트리밍 시뮬레이터 + 슬라이딩 윈도우 버퍼
 │   │
 │   ├── baseline_statistical.py       # 경로 A: RMS, peak, kurtosis 기반 임펄스 탐지
-│   ├── autoencoder_detector.py       # 경로 B: Conv Autoencoder 학습/추론 (정상만 학습, 48k)
-│   ├── cnn_fault_classifier.py       # 경로 C: fault type CNN 분류 (이상 라벨 학습, 멀티 rate)
+│   ├── autoencoder_detector.py       # 경로 B: Conv Autoencoder 학습/추론 (정상만 학습, 12k)
+│   ├── cnn_fault_classifier.py       # 경로 C: 위치(IR/OR/B) 분류 — 물리+CNN 교차검증 (12k)
 │   │
 │   ├── fusion.py                     # A+B anomaly score 융합 + 디바운스
 │   ├── inference.py                  # 오케스트레이터: 전처리→A·B 병렬→융합→(이상이면)C→결과 조립
@@ -38,9 +38,16 @@ project/
 │   └── thresholds.json               # A·B 임계값 + 산정 근거 메타데이터 (디바운스 N 은 config)
 │
 ├── outputs/
-│   ├── figures/                      # 결과 그래프
+│   ├── figures/                      # 결과 그래프 (PNG)
 │   ├── heatmaps/                     # reconstruction error map (B의 이상 근거 시각화)
 │   └── reports/                      # 평가 결과 csv/txt
+│
+├── visualization/                    # 그래프 스크립트 (각각 독립 실행, 결과는 outputs/figures)
+│   ├── _common.py                    # 폰트·예시신호 선택 (공유)
+│   ├── windowing_normalization.py    # 윈도잉 + 정규화 파형
+│   ├── signal_overview.py            # 정상 vs 고장 전체길이 비교
+│   ├── spectrogram_comparison.py     # 스펙트로그램 비교
+│   └── feature_comparison.py         # 경로 A 특징 분포
 │
 ├── backend/                          # app/ → backend / frontend 분리 (프론트 팀 필요)
 │   └── api.py                        # FastAPI: 추론 결과를 JSON 으로 제공

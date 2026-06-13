@@ -9,7 +9,10 @@ CWRU 베어링 진동 신호에서 **정상/이상**을 판단하는 **비지도
 
 - **경로 A (통계)** — RMS·peak·첨도·크레스트팩터로 임펄스성 이상 탐지
 - **경로 B (오토인코더)** — 정상 스펙트로그램만 학습, 재구성 오차로 미묘한 이상 탐지
-- **경로 C (분류, 지도)** — A·B 융합이 '이상'일 때만 호출, 고장 유형(IR/OR/B) 참고 추정
+- **경로 C (진단)** — A·B 융합이 '이상'일 때만 호출. 물리(엔벨로프)+CNN 교차검증으로 고장 위치(IR/OR/B) 진단
+
+> **샘플링**: 모든 신호를 **12kHz로 통일**(정상·48k 고장은 로더에서 다운샘플).
+> 윈도우 1024(≈2.5회전 @1750rpm). 멀티 로드(0~3HP) 데이터로 학습·평가.
 
 ## 폴더 구조
 
@@ -18,9 +21,9 @@ project/
 ├── data/
 │   ├── raw/                  # 원본 CWRU .mat
 │   │   ├── normal/           # 정상 (학습용 — 유일한 학습 데이터)
-│   │   ├── fault_48k/        # 고장 48kHz (평가 전용)
-│   │   ├── fault_12k/        # 고장 12kHz (평가 전용, C 멀티 rate용)
-│   │   └── fan_end_fault/    # Fan End 고장 (평가 전용, FE 가속도계)
+│   │   ├── fault_12k/        # 고장 12kHz (주 평가 데이터, DE)
+│   │   ├── fan_end_fault/    # Fan End 고장 12kHz (FE 가속도계)
+│   │   └── fault_48k/        # 고장 48kHz (로더에서 12k로 다운샘플)
 │   ├── processed/            # 윈도우 슬라이싱 배열
 │   ├── features/             # 모델 입력용 스펙트로그램 .npy
 │   ├── spectrograms/         # 시각화 이미지(학습 미사용)
@@ -42,6 +45,11 @@ project/
 ├── models/                   # autoencoder.pth / fault_classifier.pth /
 │                             # scaler.pkl / thresholds.json
 ├── outputs/                  # figures / heatmaps / reports
+├── visualization/            # 그래프 스크립트 (각각 독립 실행)
+│   ├── windowing_normalization.py  # 윈도잉+정규화 파형
+│   ├── signal_overview.py          # 정상 vs 고장 전체길이
+│   ├── spectrogram_comparison.py   # 스펙트로그램 비교
+│   └── feature_comparison.py       # 경로 A 특징 분포
 ├── backend/api.py            # FastAPI: 추론 결과 JSON 제공
 ├── frontend/                 # 웹 대시보드(실시간 파형·점수·알람)
 ├── tests/                    # 단위 테스트(예: 임펄스 주입 검증)
@@ -72,6 +80,16 @@ py -3.12 -m venv .venv
 .venv\Scripts\python.exe train_classifier.py    # 경로 C 학습
 .venv\Scripts\python.exe run_inference.py        # 최종 추론(실시간 시뮬)
 ```
+
+## 시각화 (그래프별 독립 실행)
+
+```powershell
+.venv\Scripts\python.exe -m visualization.windowing_normalization   # 윈도잉+정규화
+.venv\Scripts\python.exe -m visualization.signal_overview           # 정상 vs 고장 전체길이
+.venv\Scripts\python.exe -m visualization.spectrogram_comparison    # 스펙트로그램 비교
+.venv\Scripts\python.exe -m visualization.feature_comparison        # 경로 A 특징 분포
+```
+→ 결과 PNG는 `outputs/figures/` 에 저장.
 
 ## GPU(RTX 5090) 쓰고 싶을 때
 
