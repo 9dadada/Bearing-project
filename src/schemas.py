@@ -19,9 +19,11 @@ import numpy as np
 
 
 # =============================================================
-#  결함 유형 (경로 C 출력 라벨) = 위치 × 손상 크기
-#  팀 합의: 위치(IR/OR/B) × 크기(0.007/0.014/0.021) = 9클래스 분류.
-#  (CWRU 12k Drive End 기준. 0.028"은 OR에 없어 제외)
+#  결함 유형 (경로 C 출력 라벨) = 위치 3클래스
+#  팀 합의: 경로 C는 "어느 부품이 고장인지"(위치)만 분류한다 → IR/OR/B 3클래스.
+#  이유: 물리 진단(엔벨로프)은 결함 '위치'만 판별 가능(크기는 주파수가 같아 구분 불가).
+#        물리 ↔ CNN 교차검증이 '위치' 단위로 성립하려면 CNN도 위치 3클래스여야 한다.
+#  (CWRU 12k Drive End 기준)
 # =============================================================
 class FaultLocation(str, Enum):
     IR = "IR"   # Inner Race  (내륜)
@@ -29,19 +31,15 @@ class FaultLocation(str, Enum):
     B = "B"     # Ball        (볼)
 
 
+# 손상 크기 — 분류 대상 아님(참고 표시용). 필요 시 별도 보조 출력으로만 사용.
 class DamageSize(str, Enum):
     S007 = "0.007"   # inch
     S014 = "0.014"
     S021 = "0.021"
 
 
-# 분류기 출력 클래스 9종 = 위치 × 크기 (예: "IR_0.007")
-# class_probs 의 키, CNN 출력 순서의 기준으로 쓴다.
-FAULT_CLASSES: list[str] = [
-    f"{loc.value}_{size.value}"
-    for loc in FaultLocation
-    for size in DamageSize
-]
+# CNN(경로 C②) 출력 클래스 3종 = 위치. class_probs 의 키이자 CNN 출력 순서 기준.
+FAULT_CLASSES: list[str] = [loc.value for loc in FaultLocation]
 
 
 # =============================================================
@@ -88,15 +86,42 @@ class FusionResult:
 
 
 # =============================================================
-#  5. 경로 C 결과 — 고장 유형 분류 (12k, 위치 × 크기 9클래스)
+#  5. 경로 C 결과 — 결함 진단 (물리 ① + CNN ② 교차검증)
 #  ⚠️ C 담당자 구현. 계약(필드 모양)만 여기서 공유한다.
+#  핵심: 출처가 다른 두 진단(물리=공식, CNN=학습)이 같은 위치를 가리키면 신뢰도↑.
 # =============================================================
+class CrossCheck(str, Enum):
+    AGREE = "agree"                # 물리·CNN 위치 일치 → 높은 신뢰
+    DISAGREE = "disagree"          # 엇갈림 → '검토 필요'
+    PHYSICS_ONLY = "physics_only"  # CNN 미수행/실패 → 물리 단독
+    CNN_ONLY = "cnn_only"          # 물리가 못 잡음(예: 볼) → CNN 단독
+
+
+@dataclass
+class PathCPhysics:
+    """① 물리 진단 (엔벨로프, 비지도·학습 불필요)."""
+    location: FaultLocation | None      # 검출 위치. 못 잡으면 None (볼은 약함)
+    confidence: float                   # SNR·하모닉 기반 점수 (0~1)
+    matched_snr: dict[str, float]       # 위치별 결함주파수 SNR {'IR':.., 'OR':.., 'B':..}
+
+
+@dataclass
+class PathCCnn:
+    """② CNN 진단 (지도학습 이미지 분류, 참고 보조)."""
+    location: FaultLocation             # 최상위 위치
+    confidence: float                   # 최상위 클래스 확률 (0~1)
+    class_probs: dict[str, float]       # 3클래스 확률 {'IR':.., 'OR':.., 'B':..}
+
+
 @dataclass
 class PathCResult:
-    location: FaultLocation             # 추정 결함 위치 (IR/OR/B)
-    size: DamageSize                    # 추정 손상 크기 (0.007/0.014/0.021)
-    confidence: float                   # 최상위 클래스 확률 (0~1)
-    class_probs: dict[str, float]       # 9클래스 확률 {'IR_0.007':.., ..., 'B_0.021':..}
+    """경로 C 최종 = 물리 + CNN + 교차검증."""
+    physics: PathCPhysics               # ① 물리 진단 결과
+    cnn: PathCCnn | None                # ② CNN 진단 결과 (미구현/미수행이면 None)
+    cross_check: CrossCheck             # 교차검증 판정 (일치/검토필요/...)
+    final_location: FaultLocation | None  # 최종 채택 위치 (교차검증 반영). 미정이면 None
+    final_confidence: float             # 교차검증 반영 최종 신뢰도 (0~1)
+    size: DamageSize | None = None      # 참고용(분류 대상 아님). 기본 None
 
 
 # =============================================================
@@ -112,9 +137,13 @@ class InferenceResult:
     fused_score: float                  # 융합 점수
     is_anomaly: bool                    # 융합 판정(이 윈도우)
     alarm: bool                         # 디바운스 후 최종 알람
-    fault_location: str | None = None   # 이상일 때만 C 추정 위치(IR/OR/B). 정상이면 None
-    fault_size: str | None = None       # 이상일 때만 C 추정 크기(0.007/..). 정상이면 None
-    confidence: float | None = None     # C 추정 신뢰도. 정상이면 None
+    # --- 이상일 때만 채워지는 경로 C 진단 필드 (정상이면 모두 None) ---
+    fault_location: str | None = None   # 최종 채택 위치(IR/OR/B). 정상이면 None
+    physics_location: str | None = None  # ① 물리 진단 위치(IR/OR/B). 못 잡으면 None
+    cnn_location: str | None = None     # ② CNN 진단 위치(IR/OR/B). 미수행이면 None
+    cross_check: str | None = None      # 교차검증 판정('agree'/'disagree'/...). 정상이면 None
+    confidence: float | None = None     # 최종 신뢰도. 정상이면 None
+    fault_size: str | None = None       # 참고용 추정 크기(분류 대상 아님). 기본 None
 
     def to_dict(self) -> dict:
         """API 응답용 dict 로 변환 (그대로 JSON 직렬화 가능)."""

@@ -12,19 +12,23 @@ device: auto        # auto / cuda / cpu  (auto = GPU 있으면 cuda, 없으면 c
 #  데이터 경로
 # =============================================================
 data:
-  # 정상 — 학습·임계값 설정에 쓰는 유일한 데이터
-  raw_normal: data/raw/normal
+  # 12k 통일: 모든 신호를 target_rate(12kHz)로 맞춰서 파이프라인을 단일화한다.
+  #   - 48k 소스는 로더에서 12k로 다운샘플(안티앨리어싱 포함)
+  #   - 12k 소스는 그대로
+  target_rate: 12000
 
-  # 고장 — 평가 전용(학습 금지!). 소스마다 샘플링 주파수·가속도계 위치가 다르다.
-  #   sampling_rate : 48000(48k) / 12000(12k)
+  # 정상 — 학습·임계값 설정에 쓰는 유일한 데이터 (원본 48k → 12k 다운샘플)
+  raw_normal: data/raw/normal
+  normal_sampling_rate: 48000   # 원본 샘플링(다운샘플 전)
+  normal_mat_key: DE_time       # 정상 데이터의 가속도계 위치
+
+  # 고장 — 평가 전용(학습 금지!). 소스마다 원본 샘플링·가속도계 위치가 다르다.
+  #   sampling_rate : 원본 샘플링 (48000은 12k로 다운샘플됨)
   #   mat_key       : DE_time(Drive End) / FE_time(Fan End)  — .mat 변수 접미사
   fault_sources:
-    - { name: fault_48k,     path: data/raw/fault_48k,     sampling_rate: 48000, mat_key: DE_time }
     - { name: fault_12k,     path: data/raw/fault_12k,     sampling_rate: 12000, mat_key: DE_time }
-    - { name: fan_end_fault, path: data/raw/fan_end_fault, sampling_rate: 48000, mat_key: FE_time }
-
-  # 정상 데이터의 가속도계 위치
-  normal_mat_key: DE_time
+    - { name: fan_end_fault, path: data/raw/fan_end_fault, sampling_rate: 12000, mat_key: FE_time }
+    - { name: fault_48k,     path: data/raw/fault_48k,     sampling_rate: 48000, mat_key: DE_time }
 
   # 파생 데이터 저장 위치
   processed:    data/processed       # 윈도우 슬라이싱 배열
@@ -34,13 +38,14 @@ data:
 
 # =============================================================
 #  신호 / 윈도우
-#  기준 샘플링은 48kHz. 1회전 ≈ 1600포인트(1750rpm, 48kHz).
-#  12k 소스는 회전당 포인트가 달라 전처리에서 공통 시간길이로 맞춘다.
+#  파이프라인 기준 샘플링 = 12kHz (모든 신호를 여기 맞춤).
+#  12k에서 1회전 ≈ 400포인트(1750rpm). 윈도우 1024 ≈ 2.5회전 →
+#  충격 반복 패턴을 한 윈도우에 담아 B·스펙트로그램이 잘 보게 한다.
 # =============================================================
 signal:
-  base_sampling_rate: 48000   # 경로 B(오토인코더)의 기준 샘플링
+  base_sampling_rate: 12000   # 파이프라인 기준 샘플링(=target_rate)
 window:
-  length: 1600                # 한 윈도우 길이(포인트) ≈ 회전 1바퀴 @48k
+  length: 1024                # 한 윈도우 길이(포인트) ≈ 2.5회전 @12k
   overlap: 0.5                # 윈도우 겹침 비율 (0.5 = 절반씩 겹침)
 
 # ---- 정규화 ----
@@ -63,7 +68,7 @@ stats:
 spectrogram:
   transform: stft             # stft / cwt
   n_fft: 256                  # STFT 윈도우 크기 (시간↔주파수 해상도 트레이드오프)
-  hop_length: 64              # STFT 겹침(이동) 크기
+  hop_length: 32              # STFT 이동 크기. 1024 윈도우 → (129, 25) 스펙트로그램
   log_scale: true             # 진폭 로그(dB) 스케일 (작은 변화도 살리기)
 ae:
   noise_std: 0.1              # 디노이징용 노이즈 강도 (튜닝 대상)
@@ -103,7 +108,8 @@ artifacts:
 
 # =============================================================
 #  도메인 가정 (다루는 운전 조건 범위) — 범위 밖은 향후 과제
+#  멀티 로드(0~3HP) 학습/평가. 로드별 회전수가 조금씩 다름.
 # =============================================================
 domain:
-  load_hp: 2                  # 모터 부하 2 HP
-  rpm: 1750                   # 회전수
+  load_hp: [0, 1, 2, 3]       # 모터 부하 (HP)
+  rpm_by_load: { 0: 1797, 1: 1772, 2: 1750, 3: 1730 }  # 로드별 회전수
