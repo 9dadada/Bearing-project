@@ -4,7 +4,7 @@
 노이즈만 다르게(0.0 vs config) 학습해 손실 곡선을 나란히 본다.
 
 실행:
-    .venv\\Scripts\\python.exe compare_ae_denoising.py
+    .venv\\Scripts\\python.exe -m visualization.compare_ae_denoising
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import numpy as np
 plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
-_ROOT = Path(__file__).resolve().parent
+_ROOT = Path(__file__).resolve().parent.parent   # visualization/ → 프로젝트 루트
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
