@@ -68,7 +68,7 @@ def add_impulse_noise(sig: np.ndarray, amp_mult: float, rng,
 
 # 평가 조건: (이름, 종류, 값)
 CONDITIONS = [
-    ("깨끗", None, None),
+    ("노이즈 없음", None, None),
     ("화이트 +10dB", "white", 10),
     ("화이트 0dB", "white", 0),
     ("화이트 -10dB", "white", -10),
@@ -182,19 +182,21 @@ def _plot(results):
     names = [c[0] for c in CONDITIONS]
     x = np.arange(len(names))
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    colors = {"A": "#16a085", "B": "#8e44ad", "F": "#e67e22"}
-    labels = {"A": "경로 A", "B": "경로 B", "F": "A+B 융합"}
-    for k in ("A", "B", "F"):
+    colors = {"A": "#16a085", "B": "#8e44ad"}
+    labels = {"A": "경로 A (통계)", "B": "경로 B (오토인코더)"}
+    for k in ("A", "B"):                                       # 융합 제외 — A vs B만
         det = [r[1] * 100 for r in results[k]]
         fpr = [r[0] * 100 for r in results[k]]
         ax1.plot(x, det, "o-", color=colors[k], label=labels[k])
         ax2.plot(x, fpr, "o-", color=colors[k], label=labels[k])
+    ax1.set_ylim(0, 105)                                       # 탐지율 100%가 위쪽에 오도록
+    ax2.set_ylim(bottom=0)
     for ax, title, ylab in ((ax1, "고장 탐지율 (높을수록 좋음)", "탐지율 %"),
                             (ax2, "정상 오탐률 (낮을수록 좋음)", "오탐률 %")):
         ax.set_xticks(x); ax.set_xticklabels(names, rotation=30, ha="right", fontsize=8)
         ax.set_title(title, fontweight="bold"); ax.set_ylabel(ylab)
         ax.grid(alpha=0.3); ax.legend()
-    fig.suptitle("노이즈 강건성 — 모델 신뢰도 평가 (A·B·융합)", fontsize=13, fontweight="bold")
+    fig.suptitle("노이즈 강건성 — 경로 A vs B (통계 vs 오토인코더)", fontsize=13, fontweight="bold")
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     out = resolve_path("outputs/figures/noise_robustness.png")
     out.parent.mkdir(parents=True, exist_ok=True)
