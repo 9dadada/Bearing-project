@@ -55,14 +55,14 @@ def main() -> None:
         auc_b = roc_auc_score(np.r_[np.zeros(len(nb)), np.ones(len(fb))], np.r_[nb, fb])
         return auc_a, auc_b
 
-    # 화이트: 깨끗 + 3단계
-    white_x = ["깨끗", "+10dB", "0dB", "-10dB"]
+    # 화이트: 노이즈 없음 + 3단계
+    white_x = ["노이즈\n없음", "+10dB", "0dB", "-10dB"]
     white_fns = [lambda s: s,
                  lambda s: add_white_noise(s, 10, rng),
                  lambda s: add_white_noise(s, 0, rng),
                  lambda s: add_white_noise(s, -10, rng)]
-    # 임펄스: 깨끗 + 약/중/강
-    imp_x = ["깨끗", "약(×3)", "중(×5)", "강(×10)"]
+    # 임펄스: 노이즈 없음 + 약/중/강
+    imp_x = ["노이즈\n없음", "약(×3)", "중(×5)", "강(×10)"]
     imp_fns = [lambda s: s,
                lambda s: add_impulse_noise(s, 3, rng),
                lambda s: add_impulse_noise(s, 5, rng),
