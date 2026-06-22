@@ -4,7 +4,7 @@
 ② 탐지율·오탐률  : 고장을 잡는 비율 / 정상을 잘못 알람치는 비율
 ③ 정밀도         : '고장'이라 하면 진짜 고장일 확률 (정상:고장 비율별)
 ④ AUC·ROC       : 임계값 무관 분별력
-⑤ 노이즈 강건성  : 화이트/임펄스 노이즈 세기별 AUC
+⑤ 노이즈 강건성  : 화이트/임펄스 노이즈 SNR(dB)별 AUC (둘 다 같은 dB 기준)
 ⑥ 부하별 오탐률  : 전체 부하(0~3) 학습 후 각 부하의 오탐률 (학습 범위 내 신뢰도)
 
 실행:
@@ -26,7 +26,7 @@ from visualization._common import plt, save_fig
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     from src.data_loader import load_fault_signals, load_normal_signals
-    from src.evaluator import _load_ab, _window_scores, add_impulse_noise, add_white_noise
+    from src.evaluator import _load_ab, _window_scores, add_white_noise
     from src.reliability import precision_at
     from src.utils import get_device, load_config
 
@@ -50,17 +50,30 @@ def main() -> None:
     det = float((fb > 1).mean())
     auc_clean = roc_auc_score(np.r_[np.zeros(len(nb)), np.ones(len(fb))], np.r_[nb, fb])
 
-    # ⑤ 노이즈 강건성
+    # ⑤ 노이즈 강건성 — 화이트·임펄스 모두 SNR(dB) 기준 (같은 dB = 같은 노이즈 전력)
     print("⑤ 노이즈 강건성 계산...")
-    conds = [("깨끗", None), ("화이트\n+10dB", ("w", 10)), ("화이트\n0dB", ("w", 0)),
-             ("화이트\n-10dB", ("w", -10)), ("임펄스\n약", ("i", 3)),
-             ("임펄스\n중", ("i", 5)), ("임펄스\n강", ("i", 10))]
+    conds = [("노이즈\n없음", None),
+             ("화이트\n10dB", ("w", 10)), ("화이트\n0dB", ("w", 0)), ("화이트\n-10dB", ("w", -10)),
+             ("임펄스\n10dB", ("i", 10)), ("임펄스\n0dB", ("i", 0)), ("임펄스\n-10dB", ("i", -10))]
+
+    def _impulse_at_snr(sig, snr_db, rng, fs=12000, rate_per_sec=10):
+        """임펄스(스파이크)를 목표 SNR(dB)에 맞춰 추가 — 화이트와 동일한 dB 잣대로 비교."""
+        sig = np.asarray(sig, dtype=np.float64).copy()
+        n = len(sig)
+        k = max(1, int(rate_per_sec * n / fs))
+        train = np.zeros(n)
+        train[rng.integers(0, n, k)] = rng.uniform(0.5, 1.5, k) * rng.choice([-1.0, 1.0], k)
+        t_rms = np.sqrt(np.mean(train ** 2))
+        if t_rms > 0:
+            sig_rms = np.sqrt(np.mean(sig ** 2))
+            train *= (sig_rms / 10 ** (snr_db / 20.0)) / t_rms      # 임펄스 전력 → 목표 SNR
+        return sig + train
 
     def noisy(sig, spec, rng):
         if spec is None:
             return sig
         kind, val = spec
-        return add_white_noise(sig, val, rng) if kind == "w" else add_impulse_noise(sig, val, rng)
+        return add_white_noise(sig, val, rng) if kind == "w" else _impulse_at_snr(sig, val, rng)
 
     noise_auc = []
     for _, spec in conds:
@@ -125,7 +138,7 @@ def main() -> None:
     a.set_xticklabels([c[0] for c in conds], fontsize=8)
     a.set_ylim(0, 110); a.set_ylabel("AUC %")
     a.axhline(50, color="k", ls=":", lw=1)
-    a.set_title("⑤ 노이즈 강건성 (세기별 AUC)", fontweight="bold")
+    a.set_title("⑤ 노이즈 강건성 (SNR dB별 AUC)", fontweight="bold")
 
     # ⑥ 부하별 오탐률 (전체 부하 학습 → 모두 안전)
     a = ax[1, 2]
