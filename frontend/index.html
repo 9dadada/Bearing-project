@@ -83,6 +83,12 @@
   .truth .ok{color:var(--green)} .truth .no{color:var(--red)}
 
   /* ---- crosscheck ---- */
+  /* ---- gate steps ---- */
+  .step-tag{display:inline-block; font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+    color:var(--muted); border:1px solid var(--line); border-radius:5px; padding:3px 9px; margin-bottom:12px}
+  .flow-arrow{text-align:center; color:var(--amber); font-family:var(--mono); font-size:12px;
+    letter-spacing:.04em; margin:18px 0 16px}
+
   .xcheck{margin-top:24px; border-top:1px solid var(--line); padding-top:20px}
   .xhead{display:flex; align-items:center; gap:10px; margin-bottom:14px}
   .xhead h3{margin:0; font-size:14px; font-weight:700}
@@ -217,20 +223,87 @@ function render(d){
   $('#scopelabel').textContent = '진동 파형 · ' + (d.name || '신호');
 
   const diag = d.diagnosis;
-  let stateTxt, partTxt, partCls, sub, confTxt;
+  const aeConf = d.ae_confidence!=null ? Math.round(d.ae_confidence*100)+'%' : '—';
 
-  if(!d.is_anomaly){
-    stateTxt='판정'; partTxt='정상'; partCls='normal';
-    sub='이상 신호 없음 — 오토인코더 임계값 이내'; confTxt='—';
-  }else if(diag && diag.fault_location){
-    stateTxt='고장 감지 · 유형'; partTxt=PART[diag.fault_location]||diag.fault_location;
-    partCls='fault'; sub=`${PART_EN[diag.fault_location]||''} 결함`;
-    confTxt = diag.confidence!=null ? Math.round(diag.confidence*100)+'%' : '—';
-  }else{
-    stateTxt='이상 감지'; partTxt='유형 검토 필요'; partCls='review';
-    sub='물리·CNN 진단이 엇갈려 단정 보류'; confTxt='—';
+  /* 1단계 — 오토인코더 (이상 탐지) */
+  const aeState = d.is_anomaly ? '이상 감지' : '정상';
+  const aeCls   = d.is_anomaly ? 'fault' : 'normal';
+  const aeSub   = d.is_anomaly
+    ? `${d.n_windows}개 윈도우 중 <b>${d.n_anom_windows}개</b>를 이상으로 판정`
+    : '이상 신호 없음 — 임계값 이내';
+
+  let html = `
+    <div class="step">
+      <div class="step-tag">1단계 · 오토인코더 (이상 탐지)</div>
+      <div class="verdict">
+        <div class="vmain">
+          <div class="vpart ${aeCls}">${aeState}</div>
+          <div class="vsub">${aeSub}</div>
+        </div>
+        <div class="conf">
+          <div class="n">${aeConf}</div>
+          <div class="l">오토인코더 신뢰도</div>
+        </div>
+      </div>
+    </div>`;
+
+  /* 2단계 — 물리·CNN (오토인코더가 이상일 때만 게이트 통과) */
+  if(d.is_anomaly){
+    let partTxt, partCls, sub, cnnConf;
+    if(diag && diag.fault_location){
+      partTxt = PART[diag.fault_location]||diag.fault_location; partCls='fault';
+      sub = `${PART_EN[diag.fault_location]||''} 결함`;
+      cnnConf = diag.confidence!=null ? Math.round(diag.confidence*100)+'%' : '—';
+    }else{
+      partTxt='유형 검토 필요'; partCls='review';
+      sub='물리·CNN 진단이 엇갈려 단정 보류'; cnnConf='—';
+    }
+
+    let xhtml='';
+    if(diag){
+      const [xtxt,xcls] = XLABEL[diag.cross_check] || [diag.cross_check,'solo'];
+      const pl = diag.physics_location, cl = diag.cnn_location;
+      xhtml = `
+      <div class="xcheck">
+        <div class="xhead">
+          <h3>물리 vs CNN 교차검증</h3>
+          <span class="badge ${xcls}">${xtxt}</span>
+          <span class="why">— 출처가 다른 두 진단이 같은 위치를 가리키면 신뢰도↑</span>
+        </div>
+        <div class="twocol">
+          <div class="src">
+            <div class="k">① 물리 진단 (공식·엔벨로프)</div>
+            <div class="v">${pl?(PART[pl]||pl):'미검출'}</div>
+            <div class="d">결함 주파수 기반 · 학습 불필요</div>
+          </div>
+          <div class="src">
+            <div class="k">② CNN 진단 (학습 모델)</div>
+            <div class="v">${cl?(PART[cl]||cl):'—'}</div>
+            <div class="d">스펙트로그램 이미지 분류</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    html += `
+    <div class="flow-arrow">▼ 이상 판정 → 물리·CNN 정밀 진단 진행</div>
+    <div class="step">
+      <div class="step-tag">2단계 · 물리·CNN (고장 유형 진단)</div>
+      <div class="verdict">
+        <div class="vmain">
+          <div class="vpart ${partCls}">${partTxt}</div>
+          <div class="vsub">${sub}</div>
+        </div>
+        <div class="conf">
+          <div class="n">${cnnConf}</div>
+          <div class="l">진단 신뢰도</div>
+        </div>
+      </div>
+      ${xhtml}
+    </div>`;
   }
 
+  /* 정답 비교 */
   let truthHtml='';
   if(d.truth){
     if(d.truth==='정상'){
@@ -241,52 +314,17 @@ function render(d){
       truthHtml = `정답: ${PART[d.truth]||d.truth} · 진단 ${ok?'<span class="ok">정확 ✓</span>':'<span class="no">불일치 ✕</span>'}`;
     }
   }
+  if(truthHtml) html += `<div class="truth" style="margin-top:18px">${truthHtml}</div>`;
 
-  let xhtml='';
-  if(diag){
-    const [xtxt,xcls] = XLABEL[diag.cross_check] || [diag.cross_check,'solo'];
-    const pl = diag.physics_location, cl = diag.cnn_location;
-    xhtml = `
-    <div class="xcheck">
-      <div class="xhead">
-        <h3>물리 vs CNN 교차검증</h3>
-        <span class="badge ${xcls}">${xtxt}</span>
-        <span class="why">— 출처가 다른 두 진단이 같은 위치를 가리키면 신뢰도↑</span>
-      </div>
-      <div class="twocol">
-        <div class="src">
-          <div class="k">① 물리 진단 (공식·엔벨로프)</div>
-          <div class="v">${pl?(PART[pl]||pl):'미검출'}</div>
-          <div class="d">결함 주파수 기반 · 학습 불필요</div>
-        </div>
-        <div class="src">
-          <div class="k">② CNN 진단 (학습 모델)</div>
-          <div class="v">${cl?(PART[cl]||cl):'—'}</div>
-          <div class="d">스펙트로그램 이미지 분류</div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  $('#readout').innerHTML = `
-    <div class="verdict">
-      <div class="vmain">
-        <div class="vstate">${stateTxt}</div>
-        <div class="vpart ${partCls}">${partTxt}</div>
-        <div class="vsub">${sub}</div>
-        ${truthHtml?`<div class="truth">${truthHtml}</div>`:''}
-      </div>
-      <div class="conf">
-        <div class="n">${confTxt}</div>
-        <div class="l">신뢰도</div>
-      </div>
-    </div>
+  /* 윈도우/알람 통계 */
+  html += `
     <div class="stats">
       <div class="stat"><div class="num">${d.n_windows}</div><div class="cap">윈도우</div></div>
       <div class="stat"><div class="num">${d.n_alarm}</div><div class="cap">알람</div></div>
       <div class="stat"><div class="num">${d.is_anomaly?'이상':'정상'}</div><div class="cap">오토인코더 판정</div></div>
-    </div>
-    ${xhtml}`;
+    </div>`;
+
+  $('#readout').innerHTML = html;
 }
 
 function showErr(msg){ $('#readout').innerHTML = `<div class="err">⚠ ${msg}</div>`; }

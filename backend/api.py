@@ -94,12 +94,17 @@ def _result_json(res, name: str, signal: np.ndarray, truth: str | None) -> dict:
             "physics_location": pc.physics.location.value if pc.physics.location else None,
             "cnn_location": pc.cnn.location.value if pc.cnn else None,
         }
+    # 오토인코더 신뢰도 = 판정에 동의한 윈도우 비율
+    ratio = res.n_anomaly_windows / res.n_windows if res.n_windows else 0.0
+    ae_confidence = ratio if res.is_anomaly else (1.0 - ratio)
     return {
         "name": name,
         "truth": truth,
         "is_anomaly": res.is_anomaly,
         "n_windows": res.n_windows,
         "n_alarm": res.n_alarm_windows,
+        "n_anom_windows": res.n_anomaly_windows,
+        "ae_confidence": ae_confidence,
         "diagnosis": diagnosis,
         "preview": _preview(signal),
     }
