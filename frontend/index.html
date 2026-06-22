@@ -230,7 +230,9 @@ function render(d){
   const aeCls   = d.is_anomaly ? 'fault' : 'normal';
   const aeSub   = d.is_anomaly
     ? `${d.n_windows}개 윈도우 중 <b>${d.n_anom_windows}개</b>를 이상으로 판정`
-    : '이상 신호 없음 — 임계값 이내';
+    : (d.n_anom_windows>0
+        ? `${d.n_windows}개 중 <b>${d.n_anom_windows}개</b> 윈도우만 임계값 초과 — 연속 아님 → 정상`
+        : '이상 신호 없음 — 임계값 이내');
 
   let html = `
     <div class="step">
@@ -320,7 +322,8 @@ function render(d){
   html += `
     <div class="stats">
       <div class="stat"><div class="num">${d.n_windows}</div><div class="cap">윈도우</div></div>
-      <div class="stat"><div class="num">${d.n_alarm}</div><div class="cap">알람</div></div>
+      <div class="stat"><div class="num">${d.n_anom_windows}</div><div class="cap">이상 윈도우</div></div>
+      <div class="stat"><div class="num">${d.n_alarm}</div><div class="cap">알람(연속3)</div></div>
       <div class="stat"><div class="num">${d.is_anomaly?'이상':'정상'}</div><div class="cap">오토인코더 판정</div></div>
     </div>`;
 
