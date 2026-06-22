@@ -200,11 +200,13 @@ def diagnose_physics(
 #  4. 교차검증 — 물리(①) ↔ CNN(②)  ⭐ 핵심 차별점
 # =============================================================
 def cross_check(physics: PathCPhysics, cnn: PathCCnn | None) -> PathCResult:
-    """두 진단을 비교해 최종 판정·신뢰도를 만든다.
+    """CNN을 주 판정으로, 물리는 '신뢰도 부스터'(거부권 없음).
 
+    - 한쪽만 있음    → 그쪽 채택 (PHYSICS_ONLY / CNN_ONLY)
     - 둘 다 같은 위치 → AGREE, 신뢰도 크게↑ (독립 근거가 일치)
-    - 엇갈림        → DISAGREE, 최종위치 None('검토 필요')
-    - 한쪽만 있음    → PHYSICS_ONLY / CNN_ONLY (그쪽 결과 채택)
+    - 엇갈림        → DISAGREE, 그래도 CNN 채택(물리는 참고만, 신뢰도는 CNN 단독)
+      ※ CNN(100%)이 물리(OR/B 약함)보다 강해, 물리에 거부권을 주면 맞는 CNN 답을
+        '검토필요'로 버리게 되므로 부스터로만 사용한다.
     """
     if cnn is None:
         return PathCResult(physics, None, CrossCheck.PHYSICS_ONLY,
@@ -213,11 +215,11 @@ def cross_check(physics: PathCPhysics, cnn: PathCCnn | None) -> PathCResult:
         # 물리가 못 잡음(예: 볼) → CNN 단독. 볼 약점을 데이터가 메우는 지점.
         return PathCResult(physics, cnn, CrossCheck.CNN_ONLY, cnn.location, cnn.confidence)
     if physics.location == cnn.location:
-        # 일치: 두 근거가 모두 틀릴 확률이 곱으로 줄어 신뢰도 상승
+        # 일치: 두 근거가 모두 틀릴 확률이 곱으로 줄어 신뢰도 상승(부스트)
         conf = 1.0 - (1.0 - physics.confidence) * (1.0 - cnn.confidence)
-        return PathCResult(physics, cnn, CrossCheck.AGREE, physics.location, round(conf, 3))
-    # 엇갈림 → 섣불리 단정하지 않고 검토 필요로 넘김
-    return PathCResult(physics, cnn, CrossCheck.DISAGREE, None, 0.0)
+        return PathCResult(physics, cnn, CrossCheck.AGREE, cnn.location, round(conf, 3))
+    # 엇갈림 → 물리는 거부권 없음. CNN 채택, 신뢰도는 CNN 단독.
+    return PathCResult(physics, cnn, CrossCheck.DISAGREE, cnn.location, cnn.confidence)
 
 
 # =============================================================
