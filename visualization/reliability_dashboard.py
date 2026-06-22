@@ -129,12 +129,14 @@ def main() -> None:
     a.plot(xlab, white, "o-", color=B, lw=2.2, label="화이트")
     a.plot(xlab, imp, "s-", color=R, lw=2.2, label="임펄스")
     for x, v in enumerate(white):
-        a.text(x, v + 1.0, f"{v:.0f}%", ha="center", va="bottom", color=B, fontsize=8, fontweight="bold")
+        a.text(x, v + 2.5, f"{v:.0f}%", ha="center", va="bottom", color=B, fontsize=8, fontweight="bold")
     for x, v in enumerate(imp):
-        a.text(x, v - 1.6, f"{v:.0f}%", ha="center", va="top", color=R, fontsize=8, fontweight="bold")
-    a.set_ylim(60, 107); a.set_ylabel("AUC %")
+        a.text(x, v - 3.0, f"{v:.0f}%", ha="center", va="top", color=R, fontsize=8, fontweight="bold")
+    a.axhline(50, color="gray", ls=":", lw=1)
+    a.text(0, 51.5, "찍기 50%", color="gray", fontsize=7, va="bottom")
+    a.set_ylim(0, 108); a.set_ylabel("AUC %")
     a.set_title("④ 노이즈 강건성 (SNR dB별 AUC)", fontweight="bold")
-    a.legend(loc="lower left"); a.grid(alpha=0.3)
+    a.legend(loc="lower right"); a.grid(alpha=0.3)
 
     # ⑤ 부하별 오탐률 (전체 부하 0~3 학습 → 모두 안전)
     a = ax[1, 1]
