@@ -94,7 +94,7 @@ cnn:
 #  융합 / 판정
 # =============================================================
 fusion:
-  rule: or                    # or / weighted
+  rule: b_only                # b_only(경로 A 버림·오토인코더 단독) / or / weighted
   weights: { a: 0.5, b: 0.5 } # rule=weighted 일 때 가중치
   debounce_n: 3               # 연속 N 윈도우 이상일 때만 알람 (오탐 억제)
 

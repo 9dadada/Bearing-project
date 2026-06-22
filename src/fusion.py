@@ -32,6 +32,9 @@ def fuse_scores(score_a: float, score_b: float, cfg: dict) -> tuple[float, bool]
         wa, wb = f["weights"]["a"], f["weights"]["b"]
         fused = wa * float(score_a) + wb * float(score_b)
         is_anom = fused > 1.0
+    elif rule == "b_only":            # 경로 A 미사용 — 오토인코더(B) 단독 판정
+        fused = float(score_b)
+        is_anom = score_b > 1.0
     else:
         raise ValueError(f"지원하지 않는 융합 규칙: {rule}")
     return fused, bool(is_anom)
