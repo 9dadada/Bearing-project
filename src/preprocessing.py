@@ -28,6 +28,30 @@ if str(_ROOT) not in sys.path:
 from src.utils import load_config, resolve_path, set_seed
 
 
+def order_track(signal: np.ndarray, fs: int, rpm: float, cfg: dict) -> np.ndarray:
+    """배포용 정렬 — 샘플링주파수(fs)와 회전수(rpm)를 학습 기준에 맞춘다.
+
+    ① fs → target_rate(12kHz) 리샘플
+    ② rpm → ref_rpm 으로 '각도 정렬'(order tracking): 회전수가 달라도 윈도우당 회전수가
+       같아지도록 시간축을 늘이고/줄인다 → 회전수 차이로 인한 오탐(도메인 시프트) 완화.
+    배포 시 (파형, fs, rpm)만 주면 학습 데이터와 같은 조건으로 맞춰진다.
+    """
+    import scipy.signal
+    from fractions import Fraction
+
+    target = cfg["data"]["target_rate"]
+    ref_rpm = cfg["signal"]["ref_rpm"]
+    sig = np.asarray(signal, dtype=np.float64).ravel()
+
+    if int(fs) != int(target):                      # ① 샘플링 정렬
+        fr = Fraction(int(target), int(fs)).limit_denominator(10000)
+        sig = scipy.signal.resample_poly(sig, fr.numerator, fr.denominator)
+    if abs(rpm - ref_rpm) > 1e-6:                   # ② 회전수(각도) 정렬
+        fr = Fraction(int(round(rpm)), int(round(ref_rpm))).limit_denominator(4000)
+        sig = scipy.signal.resample_poly(sig, fr.numerator, fr.denominator)
+    return sig.astype(np.float64)
+
+
 def make_windows(signal: np.ndarray, length: int, overlap: float) -> np.ndarray:
     """1D 신호를 고정 길이 윈도우로 자른다.
 
